@@ -1,6 +1,6 @@
 # compile-eval-loader
 
-evaluates the module with webpack child compiler at compile time
+evaluate the module with webpack child compiler at compile time
 
 ## example
 
