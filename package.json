@@ -5,6 +5,8 @@
   "author": "Long Wei",
   "license": "MIT",
   "repository": "defims/compile-eval-loader",
+  "homepage": "https://github.com/defims/compile-eval-loader",
+  "bugs": "https://github.com/defims/compile-eval-loader/issues",
   "main": "index.js",
   "devDependencies": {
     "webpack": "^4.16.3"
