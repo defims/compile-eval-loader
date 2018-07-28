@@ -4,6 +4,7 @@
   "description": "evaluates the module with webpack child compiler at compile time",
   "author": "Long Wei",
   "license": "MIT",
+  "repository": "defims/compile-eval-loader",
   "main": "index.js",
   "devDependencies": {
     "webpack": "^4.16.3"
