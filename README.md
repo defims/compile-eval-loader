@@ -2,9 +2,11 @@
 
 evaluates the module with webpack child compiler at compile time
 
-## usage
+## example
 
-#### input test.jsx
+test.jsx compile to test.html
+
+#### test.jsx
 
 ```javascript
 import React from 'react';
@@ -21,7 +23,7 @@ export default ReactDOMServer.renderToStaticMarkup(
 )
 ```
 
-#### with webpack.config.js
+#### webpack.config.js
 
 ```javascript
 module.exports = {
@@ -50,7 +52,7 @@ module.exports = {
 }
 ```
 
-#### output test.html
+#### test.html
 ```html
 <html>
 <head>
