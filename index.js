@@ -14,7 +14,7 @@ function throwError(message) {
   error.name = loaderName;
   error.message = error.name + '\n\n' + message + '\n';
   error.stack = false;
-  throw error;
+  console.error(error);
 }
 
 exports.default = function loader() {}
@@ -69,7 +69,7 @@ exports.pitch = function pitch(request,a ,b, c,d) {
   const childCompiler = {};
 
   childCompiler.options = {
-    filename,//filename needed, or output will be ignored
+    filename: "",//filename needed, or output will be ignored
     chunkFilename: `[id].${filename}`,
     namedChunkFilename: null,
     libraryTarget: "commonjs2",//commonjs2 type module can be eval no matter webpack config mode is production or development
@@ -119,29 +119,29 @@ exports.pitch = function pitch(request,a ,b, c,d) {
       var source = childCompilation.assets[childCompiler.file].source();
       try {
         source = eval(source).default;
+
+        if(typeof(source) === "string") {
+          source = source
+            .replace(/'/gim, "\\\'")
+            .replace(/"/gim, "\\\"")
+            .replace(/\r/gim, '\\r')
+            .replace(/\n/gim, '\\n')
+        }
+        else if(typeof(source) === "object") {
+          source = JSON.stringify(source)
+        }
+
+        source = 'module.exports = "' + source+ '";'
       }
       catch(err) {
         throwError(err.message);
-      }
-      if(typeof(source) === "string") {
-        source = source
-          .replace(/'/gim, "\\\'")
-          .replace(/"/gim, "\\\"")
-          .replace(/\r/gim, '\\r')
-          .replace(/\n/gim, '\\n')
-      }
-      else if(typeof(source) === "object") {
-        source = JSON.stringify(source)
       }
 
       //ignore childCompiler asset
       delete this._compilation.assets[childCompiler.file];
       delete childCompilation.assets[childCompiler.file];
 
-      return cb(
-        null,
-        'module.exports = "' + source+ '";'
-      )
+      return cb(null, source)
     }
 
     return cb(null, null)
