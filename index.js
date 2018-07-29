@@ -83,11 +83,19 @@ exports.pitch = function pitch(request) {
   //get entry name
   var entryName = "main";
   try {
-    const entry = compiler.options.entry;
-    const rawRequest = findEntry(this._module).rawRequest;
-    entryName = Object
+    var entry = compiler.options.entry;
+    var rawRequest = findEntry(this._module).rawRequest;
+    var matchEntry = Object
       .keys(entry)
-      .filter(key => entry[key] === rawRequest)[0];
+      .filter(key => {
+        var value = entry[key];
+        return typeof(value) === "string"
+          ? value === rawRequest
+          : Array.isArray(value)
+          ? value[0] === rawRequest
+          : false
+      })[0];
+    entryName = matchEntry ? matchEntry : entryName
   }
   catch(e) {}
 
