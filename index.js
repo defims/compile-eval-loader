@@ -17,7 +17,16 @@ function throwError(message) {
   console.error(error);
 }
 
-exports.default = function loader() {}
+//https://github.com/webpack/webpack/issues/2090
+function findEntry(mod) {
+  if (mod.reasons.length > 0
+    && mod.reasons[0].module
+    && mod.reasons[0].module.resource
+  ) {
+    return findEntry(mod.reasons[0].module)
+  }
+  return mod;
+}
 
 exports.pitch = function pitch(request) {
   const options = loaderUtils.getOptions(this) || {};
@@ -28,16 +37,10 @@ exports.pitch = function pitch(request) {
       "type": "object",
       "properties": {
         "name": {
-          "type": "string"
-        },
-        "inline": {
-          "type": "boolean"
-        },
-        "fallback": {
-          "type": "boolean"
-        },
-        "publicPath": {
-          "type": "string"
+          "anyOf": [
+            {"type": "string"},
+            {"instanceof": "Function"}
+          ]
         }
       },
       "additionalProperties": false
@@ -53,70 +56,62 @@ exports.pitch = function pitch(request) {
 
   const cb = this.async();
 
-  //output module's filename should be match current loader rule
-  const filename = loaderUtils.interpolateName(
-    this,
-    options.name || "[hash]." + loaderName + "." + (request.match(/\.(\w+)$/im)
-      ? RegExp.$1
-      : 'jsx'
-    ),
-    {
-      context: options.context || this.rootContext || this.options.context,
-      regExp: options.regExp,
-    }
-  );
-
-  const childCompiler = {};
-
-  childCompiler.outputOptions = Object.create(this._compiler.options.output);
-  childCompiler.outputOptions.libraryTarget = "commonjs2"; 
+  const compiler = this._compiler;
+  const compilation = this._compilation
+  const outputOptions = Object.create(compiler.options.output);
+  outputOptions.libraryTarget = "commonjs2"; 
   //commonjs2 type module can be eval no matter webpack config mode is production or development
-  //output filename needed, otherwise output options will be ignored
 
-  childCompiler.compiler = this._compilation.createChildCompiler(
+  const childCompiler = compilation.createChildCompiler(
     loaderName + " " + request,
-    childCompiler.outputoptions,
-    //(this._compiler.options.plugins || [])
+    outputOptions,
+    //(compiler.options.plugins || [])
   )
 
   //function createChildCompiler will apply plugins with a compiler whose options is empty object first, and some plugin need the options, so pass no plugins above and execute now
   //https://github.com/webpack/webpack/blob/master/lib/Compiler.js#L432 
-  for(const plugin of (this._compiler.options.plugins || [])) {
-    plugin.apply(childCompiler.compiler)
+  //since this loader will create child compiler immediately，entry info is missing, plugin will get a local name variable
+  //if you want entry chunk name, set in options
+  for(const plugin of (compiler.options.plugins || [])) {
+    plugin.apply(childCompiler)
   }
 
   if (this.target !== 'webworker' && this.target !== 'web') {
-    new NodeTargetPlugin().apply(childCompiler.compiler);
+    new NodeTargetPlugin().apply(childCompiler);
   }
 
-  new SingleEntryPlugin(this.context, '!!' + request, 'main').apply(
-    childCompiler.compiler
-  );
+  //get entry name
+  var entryName = "main";
+  try {
+    const entry = compiler.options.entry;
+    const rawRequest = findEntry(this._module).rawRequest;
+    entryName = Object
+      .keys(entry)
+      .filter(key => entry[key] === rawRequest)[0];
+  }
+  catch(e) {}
+
+  new SingleEntryPlugin(this.context, '!!' + request, entryName).apply(childCompiler);
 
   const subCache = 'subcache ' + __dirname + ' ' + request;
 
-  childCompiler.compilation = (compilation) => {
-    if (compilation.cache) {
-      if (!compilation.cache[subCache]) {
-        compilation.cache[subCache] = {};
-      }
-
-      compilation.cache = compilation.cache[subCache];
-    }
-  };
-
-  if (childCompiler.compiler.hooks) {
+  if (childCompiler.hooks) {
     const plugin = { name: loaderName };
 
-    childCompiler.compiler.hooks.compilation.tap(
-      plugin,
-      childCompiler.compilation
-    );
+    childCompiler.hooks.compilation.tap(plugin, compilation => {
+      if (compilation.cache) {
+        if (!compilation.cache[subCache]) {
+          compilation.cache[subCache] = {};
+        }
+
+        compilation.cache = compilation.cache[subCache];
+      }
+    });
   } else {
-    childCompiler.compiler.plugin('compilation', childCompiler.compilation);
+    childCompiler.plugin('compilation', childCompiler.compilation);
   }
 
-  childCompiler.compiler.runAsChild((err, entries, childCompilation) => {
+  childCompiler.runAsChild((err, entries, childCompilation) => {
     if(err) return cb(err);
 
     if(entries[0]) {
@@ -144,7 +139,7 @@ exports.pitch = function pitch(request) {
       }
 
       //ignore childCompiler asset
-      delete this._compilation.assets[file];
+      delete compilation.assets[file];
       delete childCompilation.assets[file];
 
       return cb(null, source)
