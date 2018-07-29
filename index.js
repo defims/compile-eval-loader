@@ -19,7 +19,7 @@ function throwError(message) {
 
 exports.default = function loader() {}
 
-exports.pitch = function pitch(request,a ,b, c,d) {
+exports.pitch = function pitch(request) {
   const options = loaderUtils.getOptions(this) || {};
 
   validateOptions({
@@ -69,15 +69,16 @@ exports.pitch = function pitch(request,a ,b, c,d) {
   const childCompiler = {};
 
   childCompiler.options = {
-    filename: "",//filename needed, or output will be ignored
+    filename: "",//filename needed, otherwise output options will be ignored
     chunkFilename: `[id].${filename}`,
     namedChunkFilename: null,
     libraryTarget: "commonjs2",//commonjs2 type module can be eval no matter webpack config mode is production or development
   }
 
   childCompiler.compiler = this._compilation.createChildCompiler(
-    loaderName,
-    childCompiler.options
+    loaderName + " " + request,
+    childCompiler.options,
+    (this._compiler.options.plugins || [])
   )
 
   if (this.target !== 'webworker' && this.target !== 'web') {
@@ -115,8 +116,9 @@ exports.pitch = function pitch(request,a ,b, c,d) {
     if(err) return cb(err);
 
     if(entries[0]) {
-      childCompiler.file = entries[0].files[0];
-      var source = childCompilation.assets[childCompiler.file].source();
+      var files = entries[0].files;
+      var file = files[files.length - 1];//only need to eval the entry file
+      var source = childCompilation.assets[file].source();
       try {
         source = eval(source).default;
 
@@ -138,8 +140,8 @@ exports.pitch = function pitch(request,a ,b, c,d) {
       }
 
       //ignore childCompiler asset
-      delete this._compilation.assets[childCompiler.file];
-      delete childCompilation.assets[childCompiler.file];
+      delete this._compilation.assets[file];
+      delete childCompilation.assets[file];
 
       return cb(null, source)
     }
