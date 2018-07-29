@@ -68,18 +68,22 @@ exports.pitch = function pitch(request) {
 
   const childCompiler = {};
 
-  childCompiler.options = {
-    filename: "",//filename needed, otherwise output options will be ignored
-    chunkFilename: `[id].${filename}`,
-    namedChunkFilename: null,
-    libraryTarget: "commonjs2",//commonjs2 type module can be eval no matter webpack config mode is production or development
-  }
+  childCompiler.outputOptions = Object.create(this._compiler.options.output);
+  childCompiler.outputOptions.libraryTarget = "commonjs2"; 
+  //commonjs2 type module can be eval no matter webpack config mode is production or development
+  //output filename needed, otherwise output options will be ignored
 
   childCompiler.compiler = this._compilation.createChildCompiler(
     loaderName + " " + request,
-    childCompiler.options,
-    (this._compiler.options.plugins || [])
+    childCompiler.outputoptions,
+    //(this._compiler.options.plugins || [])
   )
+
+  //function createChildCompiler will apply plugins with a compiler whose options is empty object first, and some plugin need the options, so pass no plugins above and execute now
+  //https://github.com/webpack/webpack/blob/master/lib/Compiler.js#L432 
+  for(const plugin of (this._compiler.options.plugins || [])) {
+    plugin.apply(childCompiler.compiler)
+  }
 
   if (this.target !== 'webworker' && this.target !== 'web') {
     new NodeTargetPlugin().apply(childCompiler.compiler);
