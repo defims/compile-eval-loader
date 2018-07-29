@@ -92,7 +92,7 @@ exports.pitch = function pitch(request) {
         return typeof(value) === "string"
           ? value === rawRequest
           : Array.isArray(value)
-          ? value[0] === rawRequest
+          ? value.filter(item => item === rawRequest).length
           : false
       })[0];
     entryName = matchEntry ? matchEntry : entryName
