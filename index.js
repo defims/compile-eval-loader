@@ -2,6 +2,7 @@
   MIT License http://www.opensource.org/licenses/mit-license.php
   Author Long Wei
 */
+//TODO devtool: hidden-source-map support
 const loaderUtils = require('loader-utils');
 const validateOptions = require('@webpack-contrib/schema-utils');
 const NodeTargetPlugin = require('webpack/lib/node/NodeTargetPlugin');
@@ -99,34 +100,48 @@ exports.pitch = function pitch(request) {
   }
   catch(e) {}
 
-  new SingleEntryPlugin(this.context, '!!' + request, entryName).apply(childCompiler);
+  new SingleEntryPlugin(this.context, '!!' + request, entryName).apply(
+    childCompiler
+  );
 
   const subCache = 'subcache ' + __dirname + ' ' + request;
 
-  if (childCompiler.hooks) {
-    const plugin = { name: loaderName };
-
-    childCompiler.hooks.compilation.tap(plugin, compilation => {
-      if (compilation.cache) {
-        if (!compilation.cache[subCache]) {
-          compilation.cache[subCache] = {};
-        }
-
-        compilation.cache = compilation.cache[subCache];
+  const childOnCompilation = childCompilation => {
+    if (childCompilation.cache) {
+      if (!childCompilation.cache[subCache]) {
+        childCompilation.cache[subCache] = {};
       }
-    });
-  } else {
-    childCompiler.plugin('compilation', childCompiler.compilation);
+      childCompilation.cache = childCompilation.cache[subCache];
+    }
   }
 
-  childCompiler.runAsChild((err, entries, childCompilation) => {
-    if(err) return cb(err);
+  if (childCompiler.hooks) {
+    const plugin = { name: loaderName };
+    childCompiler.hooks.compilation.tap(plugin, childOnCompilation);
+  } else {
+    childCompiler.plugin('compilation', childOnCompilation);
+  }
+
+  //it's different from compiler.runAsChild, no assets will be added to parent compiler
+  //https://github.com/webpack/webpack/blob/master/lib/Compiler.js#L280
+  childCompiler.compile((err, childCompilation) => {
+    if (err) return cb(err);
+
+    compilation.children.push(childCompilation);
+
+    const entries = Array.from(
+      childCompilation.entrypoints.values(),
+      ep => ep.chunks
+    ).reduce((array, chunks) => array.concat(chunks), []);
 
     if(entries[0]) {
       var files = entries[0].files;
       var file = files[files.length - 1];//only need to eval the entry file
       var source = childCompilation.assets[file].source();
       try {
+        if(source.match(/^\s*\{/im)) {//add hot module json support
+          source  = "(" + source + ")";
+        }
         source = eval(source).default;
 
         if(typeof(source) === "string") {
@@ -145,10 +160,6 @@ exports.pitch = function pitch(request) {
       catch(err) {
         throwError(err.message);
       }
-
-      //ignore childCompiler asset
-      delete compilation.assets[file];
-      delete childCompilation.assets[file];
 
       return cb(null, source)
     }
