@@ -4,11 +4,10 @@
 */
 //TODO devtool: hidden-source-map support
 const loaderUtils = require('loader-utils');
-const validateOptions = require('@webpack-contrib/schema-utils');
 const NodeTargetPlugin = require('webpack/lib/node/NodeTargetPlugin');
 const SingleEntryPlugin = require('webpack/lib/SingleEntryPlugin');
 const packageJson = require('./package.json');
-const loaderName = packageJson.name || "child-compiler-loader";
+const loaderName = packageJson.name || "compile-eval-loader";
 
 function throwError(message) {
   const error = new Error()
@@ -29,46 +28,46 @@ function findEntry(mod) {
   return mod;
 }
 
+function getEntryName(compiler, mod) {
+  var entryName = "main";
+  try {
+    const optionsEntries = compiler.options.entry;
+    const entryRawRequest = findEntry(mod).rawRequest;
+    entryName = Object
+      .keys(optionsEntries)
+      .filter(key => {
+        const value = optionsEntries[key];
+        return typeof(value) === "string"
+          ? value === entryRawRequest
+          : Array.isArray(value)
+          ? value.filter(item => item === entryRawRequest).length
+          : false
+      })[0] || entryName;
+  }
+  catch(e) {}
+  return entryName
+}
+
 exports.pitch = function pitch(request) {
-  const options = loaderUtils.getOptions(this) || {};
-
-  validateOptions({
-    name: loaderName,
-    schema: {
-      "type": "object",
-      "properties": {
-        "name": {
-          "anyOf": [
-            {"type": "string"},
-            {"instanceof": "Function"}
-          ]
-        }
-      },
-      "additionalProperties": false
-    },
-    target: options
-  });
-
   if (!this.webpack) {
     throwError('This loader is only usable with webpack');
   }
 
   this.cacheable(false);
 
+  const options = loaderUtils.getOptions(this) || {};
   const cb = this.async();
-
   const compiler = this._compiler;
   const compilation = this._compilation
-  const outputOptions = Object.create(compiler.options.output);
-  outputOptions.libraryTarget = "commonjs2"; 
-  //commonjs2 type module can be eval no matter webpack config mode is production or development
-
   const childCompiler = compilation.createChildCompiler(
-    loaderName + " " + request,
-    outputOptions,
+    loaderName,
+    {
+      //filename: childFilename,//filename is needed for singleton
+      libraryTarget: "commonjs2", 
+      //commonjs2 type module can be eval no matter webpack config mode is production or development
+    },
     //(compiler.options.plugins || [])
   )
-
   //function createChildCompiler will apply plugins with a compiler whose options is empty object first, and some plugin need the options, so pass no plugins above and execute now
   //https://github.com/webpack/webpack/blob/master/lib/Compiler.js#L432 
   //since this loader will create child compiler immediately，entry info is missing, plugin will get a local name variable
@@ -81,46 +80,31 @@ exports.pitch = function pitch(request) {
     new NodeTargetPlugin().apply(childCompiler);
   }
 
-  //get entry name
-  var entryName = "main";
-  try {
-    var entry = compiler.options.entry;
-    var rawRequest = findEntry(this._module).rawRequest;
-    var matchEntry = Object
-      .keys(entry)
-      .filter(key => {
-        var value = entry[key];
-        return typeof(value) === "string"
-          ? value === rawRequest
-          : Array.isArray(value)
-          ? value.filter(item => item === rawRequest).length
-          : false
-      })[0];
-    entryName = matchEntry ? matchEntry : entryName
-  }
-  catch(e) {}
+  new SingleEntryPlugin(
+    this.context,
+    '!!' + request,
+    //pass entryName, so [name] can be parsed as entryName
+    getEntryName(childCompiler, this._module)
+  ).apply(childCompiler);
 
-  new SingleEntryPlugin(this.context, '!!' + request, entryName).apply(
-    childCompiler
-  );
-
+  const entries = [];
   const subCache = 'subcache ' + __dirname + ' ' + request;
-
-  const childOnCompilation = childCompilation => {
+  childCompiler.hooks.compilation.tap(loaderName, childCompilation => {
     if (childCompilation.cache) {
       if (!childCompilation.cache[subCache]) {
         childCompilation.cache[subCache] = {};
       }
       childCompilation.cache = childCompilation.cache[subCache];
     }
-  }
 
-  if (childCompiler.hooks) {
-    const plugin = { name: loaderName };
-    childCompiler.hooks.compilation.tap(plugin, childOnCompilation);
-  } else {
-    childCompiler.plugin('compilation', childOnCompilation);
-  }
+    //store all entries
+    childCompilation.mainTemplate.hooks.renderWithEntry.tap(
+      loaderName,
+      (source, chunk) => {
+        entries.push({ source, chunk })
+      }
+    )
+  })
 
   //it's different from compiler.runAsChild, no assets will be added to parent compiler
   //https://github.com/webpack/webpack/blob/master/lib/Compiler.js#L280
@@ -129,39 +113,33 @@ exports.pitch = function pitch(request) {
 
     compilation.children.push(childCompilation);
 
-    const entries = Array.from(
-      childCompilation.entrypoints.values(),
-      ep => ep.chunks
-    ).reduce((array, chunks) => array.concat(chunks), []);
+    const currentChunk = childCompilation.chunks[0];
+    const entry = entries.filter(entry => entry.chunk === currentChunk)[0];
+    var entrySource = entry.source;
 
-    if(entries[0]) {
-      var files = entries[0].files;
-      var file = files[files.length - 1];//only need to eval the entry file
-      var source = childCompilation.assets[file].source();
+    if(entry.chunk) {
       try {
-        if(source.match(/^\s*\{/im)) {//add hot module json support
-          source  = "(" + source + ")";
-        }
-        source = eval(source).default;
+        entrySource = eval(entrySource.source()).default;
 
-        if(typeof(source) === "string") {
-          source = source
+        if(typeof(entrySource) === "string") {
+          entrySource = entrySource
             .replace(/'/gim, "\\\'")
             .replace(/"/gim, "\\\"")
             .replace(/\r/gim, '\\r')
             .replace(/\n/gim, '\\n')
         }
-        else if(typeof(source) === "object") {
-          source = JSON.stringify(source)
+        else if(typeof(entrySource) === "object") {
+          entrySource = JSON.stringify(entrySource)
         }
 
-        source = 'module.exports = "' + source+ '";'
+        entrySource = 'module.exports = "' + entrySource + '";'
       }
       catch(err) {
         throwError(err.message);
+        return cb(null, null)
       }
 
-      return cb(null, source)
+      return cb(null, entrySource)
     }
 
     return cb(null, null)
