@@ -108,12 +108,14 @@ exports.pitch = function pitch(request) {
     )
 
     //store chunk entry filename
+    //identifier always begin with "chunk"
+    //https://github.com/webpack/webpack/blob/8e6a012dbbb1526db1da753b61c43e8c61b3379f/lib/JavascriptModulesPlugin.js#L77
     //https://github.com/webpack/webpack/blob/4972fd8bd6790eb1ee45602c35f38b7f79849b61/lib/Compilation.js#L2329
     childCompilation.mainTemplate.hooks.renderManifest.tap(
       loaderName,
       (result, options) => {//get assets filename
         result
-          .filter(item => item.hash === options.chunk.hash)
+          .filter(item => item.identifier.match(/^chunk/im))
           .forEach(item => {
             chunkEntryFileName.push([
               options.chunk,
