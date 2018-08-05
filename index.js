@@ -61,7 +61,7 @@ exports.pitch = function pitch(request) {
   const compiler = this._compiler;
   const compilation = this._compilation;
   const outputOptions = {
-    //filename: childFilename,//filename is needed for singleton
+    //filename: childFilename,
     libraryTarget: "commonjs2", 
     //commonjs2 type module can be eval no matter webpack config mode is production or development
   };
@@ -123,10 +123,7 @@ exports.pitch = function pitch(request) {
       }
     )
   })
-  //childCompiler.runAsChild((err, entries, childCompilation) => {
-  //  if (err) return cb(err);
-  //  return cb(null, 'module.exports = 1;');
-  //})
+
   //it's different from compiler.runAsChild, no entry assets will be added to parent compiler
   //https://github.com/webpack/webpack/blob/master/lib/Compiler.js#L280
   childCompiler.compile((err, childCompilation) => {
