@@ -61,7 +61,7 @@ exports.pitch = function pitch(request) {
   const compiler = this._compiler;
   const compilation = this._compilation;
   const outputOptions = {
-    //filename: childFilename,
+    filename: loaderName,
     libraryTarget: "commonjs2", 
     //commonjs2 type module can be eval no matter webpack config mode is production or development
   };
@@ -138,8 +138,16 @@ exports.pitch = function pitch(request) {
 
     Object.keys(childCompilation.assets)
       .filter(name => name !== entryFileName)
-      .forEach(name => {
-        compilation.assets[name] = childCompilation.assets[name];
+      .forEach(name => {//TODO customize name conflict rule
+        var assets = compilation.assets,
+            i = 1;
+        if(assets[name]) {
+          while(assets[name + "." + i]) i++;
+          assets[name + "." + i] = childCompilation.assets[name];
+        }
+        else {
+          compilation.assets[name] = childCompilation.assets[name];
+        }
       })
 
     const entry = entries.filter(entry => entry.chunk === currentChunk)[0];
