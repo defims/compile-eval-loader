@@ -3,6 +3,7 @@
   Author Long Wei
 */
 //TODO devtool: hidden-source-map support
+//BUG sometimes css file will not generate?
 const loaderUtils = require('loader-utils');
 const NodeTargetPlugin = require('webpack/lib/node/NodeTargetPlugin');
 const SingleEntryPlugin = require('webpack/lib/SingleEntryPlugin');
@@ -58,20 +59,20 @@ exports.pitch = function pitch(request) {
   const options = loaderUtils.getOptions(this) || {};
   const cb = this.async();
   const compiler = this._compiler;
-  const compilation = this._compilation
+  const compilation = this._compilation;
+  const outputOptions = {
+    //filename: childFilename,//filename is needed for singleton
+    libraryTarget: "commonjs2", 
+    //commonjs2 type module can be eval no matter webpack config mode is production or development
+  };
   const childCompiler = compilation.createChildCompiler(
     loaderName,
-    {
-      //filename: childFilename,//filename is needed for singleton
-      libraryTarget: "commonjs2", 
-      //commonjs2 type module can be eval no matter webpack config mode is production or development
-    },
+    outputOptions,
     //(compiler.options.plugins || [])
   )
   //function createChildCompiler will apply plugins with a compiler whose options is empty object first, and some plugin need the options, so pass no plugins above and execute now
   //https://github.com/webpack/webpack/blob/master/lib/Compiler.js#L432 
   //since this loader will create child compiler immediately，entry info is missing, plugin will get a local name variable
-  //if you want entry chunk name, set in options
   for(const plugin of (compiler.options.plugins || [])) {
     plugin.apply(childCompiler)
   }
@@ -88,6 +89,7 @@ exports.pitch = function pitch(request) {
   ).apply(childCompiler);
 
   const entries = [];
+  const chunkEntryFileName = [];
   const subCache = 'subcache ' + __dirname + ' ' + request;
   childCompiler.hooks.compilation.tap(loaderName, childCompilation => {
     if (childCompilation.cache) {
@@ -104,19 +106,45 @@ exports.pitch = function pitch(request) {
         entries.push({ source, chunk })
       }
     )
-  })
 
-  //it's different from compiler.runAsChild, no assets will be added to parent compiler
+    //store chunk entry filename
+    //https://github.com/webpack/webpack/blob/4972fd8bd6790eb1ee45602c35f38b7f79849b61/lib/Compilation.js#L2329
+    childCompilation.mainTemplate.hooks.renderManifest.tap(
+      loaderName,
+      (result, options) => {//get assets filename
+        result
+          .filter(item => item.hash === options.chunk.hash)
+          .forEach(item => {
+            chunkEntryFileName.push([
+              options.chunk,
+              childCompilation.getPath(item.filenameTemplate, item.pathOptions)
+            ])
+          })
+      }
+    )
+  })
+  //childCompiler.runAsChild((err, entries, childCompilation) => {
+  //  if (err) return cb(err);
+  //  return cb(null, 'module.exports = 1;');
+  //})
+  //it's different from compiler.runAsChild, no entry assets will be added to parent compiler
   //https://github.com/webpack/webpack/blob/master/lib/Compiler.js#L280
   childCompiler.compile((err, childCompilation) => {
     if (err) return cb(err);
-
     compilation.children.push(childCompilation);
 
     const currentChunk = childCompilation.chunks[0];
+    const entryFileName = chunkEntryFileName
+      .filter(item => item[0] === currentChunk)[0][1];
+
+    Object.keys(childCompilation.assets)
+      .filter(name => name !== entryFileName)
+      .forEach(name => {
+        compilation.assets[name] = childCompilation.assets[name];
+      })
+
     const entry = entries.filter(entry => entry.chunk === currentChunk)[0];
     var entrySource = entry.source;
-
     if(entry.chunk) {
       try {
         entrySource = eval(entrySource.source()).default;
