@@ -1,6 +1,6 @@
 {
   "name": "compile-eval-loader",
-  "version": "0.0.13",
+  "version": "0.0.14",
   "description": "evaluates the module with webpack child compiler at compile time",
   "author": "Long Wei",
   "license": "MIT",

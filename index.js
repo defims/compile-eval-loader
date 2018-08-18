@@ -3,6 +3,7 @@
   Author Long Wei
 */
 //TODO devtool: hidden-source-map support
+//TODO add additional assets' modules to parent compiler
 //BUG sometimes css file will not generate?
 const loaderUtils = require('loader-utils');
 const NodeTargetPlugin = require('webpack/lib/node/NodeTargetPlugin');
@@ -139,15 +140,15 @@ exports.pitch = function pitch(request) {
     Object.keys(childCompilation.assets)
       .filter(name => name !== entryFileName)
       .forEach(name => {//TODO customize name conflict rule
-        var assets = compilation.assets,
-            i = 1;
-        if(assets[name]) {
-          while(assets[name + "." + i]) i++;
-          assets[name + "." + i] = childCompilation.assets[name];
-        }
-        else {
+        //var assets = compilation.assets,
+        //    i = 1;
+        //if(assets[name]) {
+        //  while(assets[i + "." + name]) i++;
+        //  assets[i + "." + name] = childCompilation.assets[name];
+        //}
+        //else {
           compilation.assets[name] = childCompilation.assets[name];
-        }
+        //}
       })
 
     const entry = entries.filter(entry => entry.chunk === currentChunk)[0];

@@ -1,6 +1,8 @@
 # compile-eval-loader
 
-evaluate the module with webpack child compiler at compile time
+evaluate the module with webpack child compiler at compile time.
+and modules in child compiler will be separated from parent compiler.
+it's useful when you want serverside rendering.
 
 ## example
 
